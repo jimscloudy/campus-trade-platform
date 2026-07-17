@@ -5,6 +5,8 @@ services:
     build: ./server
     container_name: campus-server
     restart: unless-stopped
+    # AI Key / JWT 等写在 .env.docker，由 env_file 注入
+    # 注意：不要用 environment 里 AI_API_KEY=${AI_API_KEY:-} 覆盖成空字符串
     env_file:
       - .env.docker
     environment:
@@ -12,12 +14,7 @@ services:
       PORT: 3000
       DB_TYPE: sqlite
       DB_PATH: /app/data/campus.db
-      JWT_SECRET: ${JWT_SECRET:-campus-trade-jwt-secret-change-me}
-      JWT_EXPIRES: ${JWT_EXPIRES:-7d}
       UPLOAD_DIR: /app/uploads
-      AI_API_KEY: ${AI_API_KEY:-}
-      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
-      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
     ports:
       - "${API_PORT:-3001}:3000"
     volumes:
@@ -29,7 +26,6 @@ services:
     container_name: campus-web
     restart: unless-stopped
     ports:
-      # 默认 8081，避免与已有 8080 服务冲突
       - "${WEB_PORT:-8081}:80"
     depends_on:
       - server
