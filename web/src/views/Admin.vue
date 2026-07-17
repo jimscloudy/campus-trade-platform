@@ -8,39 +8,65 @@
       <div class="card stat"><strong>{{ stats.treehole || 0 }}</strong><span>树洞</span></div>
     </div>
 
-    <div class="card ai-box">
-      <div class="ai-title">🤖 AI 运营洞察</div>
-      <p v-if="reportSum">{{ reportSum.summary }}</p>
-      <ul v-if="insights?.tips?.length">
-        <li v-for="(t, i) in insights.tips" :key="i">{{ t }}</li>
-      </ul>
-      <el-button size="small" @click="loadAi">刷新 AI 摘要</el-button>
-    </div>
-
     <el-tabs v-model="tab">
-      <el-tab-pane label="大模型切换" name="models">
+      <el-tab-pane label="大模型配置" name="models">
         <div class="card panel">
-          <p class="muted" style="margin-top: 0">
-            当前通道：
-            <strong>{{ modelInfo.activeName || '-' }}</strong>
-            · 模型 <code>{{ modelInfo.activeModel || '-' }}</code>
-          </p>
-          <div v-for="p in modelInfo.providers || []" :key="p.id" class="model-row" :class="{ on: p.active }">
+          <div class="toolbar">
             <div>
-              <strong>{{ p.name }}</strong>
-              <span class="muted"> · {{ p.model }} / 强力 {{ p.modelStrong }}</span>
-              <div class="muted tiny">{{ p.baseUrl }} · Key {{ p.keyMasked }}</div>
+              当前：
+              <strong>{{ modelInfo.activeName || '未选择' }}</strong>
+              <span class="muted"> · {{ modelInfo.activeModel || '-' }}</span>
+              <el-tag v-if="modelInfo.hasActiveKey" type="success" size="small" style="margin-left: 8px">已配置 Key</el-tag>
+              <el-tag v-else type="danger" size="small" style="margin-left: 8px">未配置 Key</el-tag>
             </div>
             <div class="ops">
-              <el-tag v-if="p.active" type="success">使用中</el-tag>
-              <el-button v-else type="primary" size="small" @click="switchModel(p)">切换到此通道</el-button>
-              <el-button size="small" @click="editModel(p)">编辑</el-button>
-              <el-button size="small" @click="pingModel">测试连通</el-button>
+              <el-button type="primary" @click="openCreate">+ 新增通道</el-button>
+              <el-button @click="loadModels">刷新</el-button>
             </div>
           </div>
-          <div v-if="pingResult" class="ping" :class="{ ok: pingResult.ok }">
-            {{ pingResult.ok ? '连通成功' : '连通失败' }}：{{ pingResult.sample || pingResult.reason }}
+
+          <div v-if="!modelInfo.hasActiveKey" class="warn-box">
+            当前通道还没有 API Key。请点对应通道的「编辑配置」，填写 Base URL、模型名和 Key 后保存，再点「测试连通」。
           </div>
+
+          <div v-for="p in modelInfo.providers || []" :key="p.id" class="model-row" :class="{ on: p.active }">
+            <div class="info">
+              <div class="name-line">
+                <strong>{{ p.name }}</strong>
+                <el-tag v-if="p.active" type="success" size="small">使用中</el-tag>
+                <el-tag v-if="!p.hasKey" type="warning" size="small">无 Key</el-tag>
+              </div>
+              <div class="muted tiny">模型：{{ p.model }}　/　强力：{{ p.modelStrong }}</div>
+              <div class="muted tiny">地址：{{ p.baseUrl }}</div>
+              <div class="muted tiny">Key：{{ p.keyMasked }}</div>
+            </div>
+            <div class="ops">
+              <el-button v-if="!p.active" type="primary" size="small" @click="switchModel(p)">设为当前</el-button>
+              <el-button size="small" type="success" plain @click="pingOne(p)">测试连通</el-button>
+              <el-button size="small" @click="openEdit(p)">编辑配置</el-button>
+              <el-button size="small" type="danger" plain @click="removeOne(p)">删除</el-button>
+            </div>
+          </div>
+
+          <div v-if="pingResult" class="ping" :class="{ ok: pingResult.ok }">
+            <template v-if="pingResult.ok">
+              ✅ {{ pingResult.providerName || '' }} 连通成功（{{ pingResult.model }}）
+              <span v-if="pingResult.sample">：{{ pingResult.sample }}</span>
+            </template>
+            <template v-else>
+              ❌ {{ pingResult.providerName || '' }} 失败：{{ pingResult.reason }}
+            </template>
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="AI 洞察" name="insights">
+        <div class="card panel">
+          <p v-if="reportSum">{{ reportSum.summary }}</p>
+          <ul v-if="insights?.tips?.length">
+            <li v-for="(t, i) in insights.tips" :key="i">{{ t }}</li>
+          </ul>
+          <el-button size="small" @click="loadAi">刷新</el-button>
         </div>
       </el-tab-pane>
 
@@ -86,11 +112,43 @@
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <el-dialog v-model="dlgVisible" :title="dlgMode === 'create' ? '新增模型通道' : '编辑模型通道'" width="520px">
+      <el-form label-position="top">
+        <el-form-item v-if="dlgMode === 'create'" label="通道 ID（英文）">
+          <el-input v-model="form.id" placeholder="例如 openai2" />
+        </el-form-item>
+        <el-form-item label="显示名称">
+          <el-input v-model="form.name" placeholder="例如 Grok 4.5" />
+        </el-form-item>
+        <el-form-item label="Base URL">
+          <el-input v-model="form.baseUrl" placeholder="https://api.hualong.online/v1" />
+        </el-form-item>
+        <el-form-item label="默认模型">
+          <el-input v-model="form.model" placeholder="grok-4.5 或 gpt-5.4-mini" />
+        </el-form-item>
+        <el-form-item label="强力模型">
+          <el-input v-model="form.modelStrong" placeholder="强力模式使用的模型" />
+        </el-form-item>
+        <el-form-item :label="dlgMode === 'edit' ? 'API Key（留空则不修改）' : 'API Key'">
+          <el-input
+            v-model="form.apiKey"
+            type="password"
+            show-password
+            :placeholder="dlgMode === 'edit' ? '不改请留空' : 'sk-xxxx'"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dlgVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveForm">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../api/http'
 
@@ -102,8 +160,20 @@ const categories = ref([])
 const catName = ref('')
 const insights = ref(null)
 const reportSum = ref(null)
-const modelInfo = ref({ providers: [] })
+const modelInfo = ref({ providers: [], hasActiveKey: false })
 const pingResult = ref(null)
+
+const dlgVisible = ref(false)
+const dlgMode = ref('edit')
+const saving = ref(false)
+const form = reactive({
+  id: '',
+  name: '',
+  baseUrl: 'https://api.hualong.online/v1',
+  model: '',
+  modelStrong: '',
+  apiKey: '',
+})
 
 async function load() {
   stats.value = await http.get('/admin/stats')
@@ -128,7 +198,68 @@ async function loadModels() {
   try {
     modelInfo.value = await http.get('/ai/providers')
   } catch {
-    modelInfo.value = { providers: [] }
+    modelInfo.value = { providers: [], hasActiveKey: false }
+  }
+}
+
+function openCreate() {
+  dlgMode.value = 'create'
+  form.id = ''
+  form.name = ''
+  form.baseUrl = 'https://api.hualong.online/v1'
+  form.model = 'gpt-5.4-mini'
+  form.modelStrong = 'gpt-5.4'
+  form.apiKey = ''
+  dlgVisible.value = true
+}
+
+function openEdit(p) {
+  dlgMode.value = 'edit'
+  form.id = p.id
+  form.name = p.name
+  form.baseUrl = p.baseUrl
+  form.model = p.model
+  form.modelStrong = p.modelStrong
+  form.apiKey = ''
+  dlgVisible.value = true
+}
+
+async function saveForm() {
+  if (!form.name || !form.baseUrl || !form.model) {
+    ElMessage.warning('请填写名称、地址和模型')
+    return
+  }
+  if (dlgMode.value === 'create' && !form.apiKey) {
+    ElMessage.warning('新增通道请填写 API Key')
+    return
+  }
+  saving.value = true
+  try {
+    if (dlgMode.value === 'create') {
+      await http.post('/ai/providers', {
+        id: form.id || undefined,
+        name: form.name,
+        baseUrl: form.baseUrl,
+        model: form.model,
+        modelStrong: form.modelStrong || form.model,
+        apiKey: form.apiKey,
+      })
+      ElMessage.success('已新增通道')
+    } else {
+      const body = {
+        name: form.name,
+        baseUrl: form.baseUrl,
+        model: form.model,
+        modelStrong: form.modelStrong || form.model,
+      }
+      if (form.apiKey.trim()) body.apiKey = form.apiKey.trim()
+      await http.patch(`/ai/providers/${form.id}`, body)
+      ElMessage.success('已保存配置')
+    }
+    dlgVisible.value = false
+    await loadModels()
+  } finally {
+    saving.value = false
   }
 }
 
@@ -139,31 +270,17 @@ async function switchModel(p) {
   pingResult.value = null
 }
 
-async function editModel(p) {
-  const { value: model } = await ElMessageBox.prompt('默认模型名', `编辑 ${p.name}`, {
-    inputValue: p.model,
-  }).catch(() => ({ value: null }))
-  if (model == null) return
-  const { value: modelStrong } = await ElMessageBox.prompt('强力模型名', `编辑 ${p.name}`, {
-    inputValue: p.modelStrong || p.model,
-  }).catch(() => ({ value: null }))
-  if (modelStrong == null) return
-  const { value: apiKey } = await ElMessageBox.prompt('API Key（留空不改）', `编辑 ${p.name}`, {
-    inputValue: '',
-    inputPlaceholder: 'sk-... 留空保持原 Key',
-  }).catch(() => ({ value: null }))
-  if (apiKey == null) return
-  const body = { model, modelStrong }
-  if (String(apiKey).trim()) body.apiKey = String(apiKey).trim()
-  await http.patch(`/ai/providers/${p.id}`, body)
-  ElMessage.success('已保存')
-  await loadModels()
+async function pingOne(p) {
+  pingResult.value = await http.post(`/ai/providers/${p.id}/ping`)
+  if (pingResult.value.ok) ElMessage.success('连通成功')
+  else ElMessage.error(pingResult.value.reason || '连通失败')
 }
 
-async function pingModel() {
-  pingResult.value = await http.get('/ai/ping')
-  if (pingResult.value.ok) ElMessage.success('当前通道连通正常')
-  else ElMessage.error(pingResult.value.reason || '连通失败')
+async function removeOne(p) {
+  await ElMessageBox.confirm(`确定删除通道「${p.name}」？`, '删除确认')
+  await http.post(`/ai/providers/${p.id}/delete`)
+  ElMessage.success('已删除')
+  await loadModels()
 }
 
 async function handleReport(r, status) {
@@ -212,26 +329,25 @@ onMounted(load)
 }
 .stat strong { font-size: 24px; color: var(--primary-dark); }
 .stat span { font-size: 13px; color: var(--muted); }
-.ai-box {
-  padding: 14px 16px;
-  margin-bottom: 14px;
-  background: linear-gradient(120deg, #e7f7ef, #eaf2ff);
-}
-.ai-title { font-weight: 750; margin-bottom: 8px; }
-.ai-box p { margin: 0 0 8px; line-height: 1.6; color: var(--text-secondary); }
-.ai-box ul { margin: 0 0 10px; padding-left: 18px; color: var(--text-secondary); }
-.panel { padding: 14px; }
-.report {
+.panel { padding: 16px; }
+.toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 12px 4px;
-  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  margin-bottom: 14px;
 }
-.report p { margin: 6px 0 0; }
-.ops { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; align-items: center; }
-.cat-form { display: flex; gap: 10px; margin-bottom: 12px; }
+.warn-box {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
 .model-row {
   display: flex;
   justify-content: space-between;
@@ -247,22 +363,39 @@ onMounted(load)
   border-color: #86efac;
   background: #f0fdf4;
 }
-.tiny { font-size: 12px; margin-top: 4px; }
+.name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.tiny { font-size: 12px; margin-top: 2px; }
+.ops { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; align-items: center; }
 .ping {
-  margin-top: 8px;
+  margin-top: 10px;
   padding: 10px 12px;
   border-radius: 10px;
   background: #fff7ed;
   color: #c2410c;
   font-size: 13px;
+  line-height: 1.5;
 }
 .ping.ok {
   background: #ecfdf5;
   color: #047857;
 }
-code {
-  background: #f1f5f9;
-  padding: 1px 6px;
-  border-radius: 4px;
+.report {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.report p { margin: 6px 0 0; }
+.cat-form { display: flex; gap: 10px; margin-bottom: 12px; }
+@media (max-width: 700px) {
+  .model-row { flex-direction: column; align-items: flex-start; }
 }
 </style>

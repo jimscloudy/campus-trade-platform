@@ -101,6 +101,48 @@ export class AiService {
     return this.aiConfig.addProvider(data);
   }
 
+  removeProvider(id: string) {
+    return this.aiConfig.removeProvider(id);
+  }
+
+  async pingProvider(id?: string) {
+    const p = id ? this.aiConfig.getById(id) : this.aiConfig.getActive();
+    if (!p) return { ok: false, reason: '没有可用通道' };
+    if (!p.apiKey?.trim()) {
+      return {
+        ok: false,
+        providerId: p.id,
+        providerName: p.name,
+        model: p.model,
+        reason: '未配置 API Key，请在后台编辑该通道并填写密钥',
+      };
+    }
+    try {
+      const content = await this.callLlm(
+        p.baseUrl.replace(/\/$/, ''),
+        p.apiKey,
+        p.model,
+        [{ role: 'user', content: '只回复：ok' }],
+      );
+      return {
+        ok: true,
+        providerId: p.id,
+        providerName: p.name,
+        model: p.model,
+        sample: content.slice(0, 80),
+      };
+    } catch (e: any) {
+      return {
+        ok: false,
+        providerId: p.id,
+        providerName: p.name,
+        model: p.model,
+        keyPrefix: p.apiKey.slice(0, 4) + '***' + p.apiKey.slice(-4),
+        reason: e?.message || String(e),
+      };
+    }
+  }
+
   async chat(messages: ChatMessage[], userId?: number, mode: 'fast' | 'strong' = 'fast') {
     if (!messages?.length) throw new BadRequestException('消息不能为空');
     const last = [...messages].reverse().find((m) => m.role === 'user');
@@ -566,23 +608,6 @@ ${context}
   }
 
   async ping() {
-    const { apiKey, baseUrl, model, enabled } = this.cfg;
-    if (!enabled) {
-      return { ok: false, reason: '未配置 AI_API_KEY', baseUrl, model };
-    }
-    try {
-      const content = await this.callLlm(baseUrl, apiKey, model, [
-        { role: 'user', content: '只回复：ok' },
-      ]);
-      return { ok: true, baseUrl, model, sample: content.slice(0, 80) };
-    } catch (e: any) {
-      return {
-        ok: false,
-        baseUrl,
-        model,
-        keyPrefix: apiKey.slice(0, 4) + '***' + apiKey.slice(-4),
-        reason: e?.message || String(e),
-      };
-    }
+    return this.pingProvider();
   }
 }

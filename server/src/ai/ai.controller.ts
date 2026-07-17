@@ -53,6 +53,12 @@ export class AiController {
   }
 
   @UseGuards(JwtAuthGuard, AdminGuard)
+  @Post('providers/:id/ping')
+  pingProvider(@Param('id') id: string) {
+    return this.ai.pingProvider(id);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @Patch('providers/:id')
   updateProvider(
     @Param('id') id: string,
@@ -75,6 +81,12 @@ export class AiController {
     },
   ) {
     return this.ai.addProvider(body);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Post('providers/:id/delete')
+  removeProvider(@Param('id') id: string) {
+    return this.ai.removeProvider(id);
   }
 
   @UseGuards(OptionalJwtAuthGuard)
