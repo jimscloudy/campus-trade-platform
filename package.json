@@ -1,0 +1,12 @@
+{
+  "name": "campus-trade-platform",
+  "private": true,
+  "scripts": {
+    "dev:server": "npm --prefix server run start:dev",
+    "dev:web": "npm --prefix web run dev",
+    "build:server": "npm --prefix server run build",
+    "build:web": "npm --prefix web run build",
+    "start": "powershell -ExecutionPolicy Bypass -File ./start.ps1",
+    "stop": "powershell -ExecutionPolicy Bypass -File ./stop.ps1"
+  }
+}

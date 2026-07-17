@@ -1,0 +1,38 @@
+version: "3.3"
+
+services:
+  server:
+    build: ./server
+    container_name: campus-server
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_TYPE: sqlite
+      DB_PATH: /app/data/campus.db
+      JWT_SECRET: ${JWT_SECRET:-campus-trade-jwt-secret-change-me}
+      JWT_EXPIRES: ${JWT_EXPIRES:-7d}
+      UPLOAD_DIR: /app/uploads
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - server_data:/app/data
+      - uploads_data:/app/uploads
+
+  web:
+    build: ./web
+    container_name: campus-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - server
+
+volumes:
+  server_data:
+  uploads_data:
