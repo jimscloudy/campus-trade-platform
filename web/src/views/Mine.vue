@@ -80,6 +80,10 @@ const form = reactive({
   bio: auth.user?.bio || '',
 })
 
+function goAdmin() {
+  window.location.href = '/admin'
+}
+
 async function save() {
   saving.value = true
   try {
