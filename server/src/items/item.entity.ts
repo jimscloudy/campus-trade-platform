@@ -33,8 +33,8 @@ export class Item {
   @Column({ length: 32, default: 'on_sale' })
   status: 'on_sale' | 'sold' | 'off';
 
-  @Column({ type: 'text', nullable: true, default: '[]' })
-  imagesRaw: string;
+  @Column({ type: 'text', nullable: true })
+  imagesRaw: string | null;
 
   get images(): string[] {
     try {

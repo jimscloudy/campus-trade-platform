@@ -38,7 +38,7 @@ export class Review {
   @Column({ type: 'int' })
   score: number;
 
-  @Column({ type: 'text', nullable: true, default: null })
+  @Column({ type: 'text', nullable: true })
   content: string | null;
 
   @CreateDateColumn()

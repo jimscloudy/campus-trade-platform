@@ -11,7 +11,6 @@ services:
       MYSQL_USER: ${DB_USER:-campus}
       MYSQL_PASSWORD: ${DB_PASSWORD:-campus123}
     ports:
-      # 宿主机 3307，避免和其他 MySQL 冲突；容器内仍是 3306
       - "${MYSQL_PORT:-3307}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
@@ -33,7 +32,7 @@ services:
       PORT: 3000
       DB_TYPE: mysql
       DB_HOST: mysql
-      DB_PORT: 3306
+      DB_PORT: "3306"
       DB_USER: ${DB_USER:-campus}
       DB_PASSWORD: ${DB_PASSWORD:-campus123}
       DB_NAME: ${DB_NAME:-campus_trade}
@@ -45,6 +44,8 @@ services:
       - uploads_data:/app/uploads
     depends_on:
       - mysql
+    # 等 MySQL 就绪再启动，减少 502
+    command: sh -c "sleep 15 && node dist/main.js"
 
   web:
     build: ./web
