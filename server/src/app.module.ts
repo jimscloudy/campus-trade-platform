@@ -34,15 +34,23 @@ const entities = [
   Report,
   Block,
 ];
-// docker 默认 mysql；本地开发可不设 DB_TYPE，走 sqljs
-const dbType = (process.env.DB_TYPE || 'sqljs').toLowerCase();
+// 统一 MySQL：本地 127.0.0.1 / Docker 内网 host=mysql
+// 仅当显式 DB_TYPE=sqljs 时才用本地 sqlite 兜底
+const dbType = (process.env.DB_TYPE || 'mysql').toLowerCase();
 const dbPath = process.env.DB_PATH || join(process.cwd(), 'data', 'campus.db');
 
 const dbConfig =
-  dbType === 'mysql'
+  dbType === 'sqljs'
     ? {
+        type: 'sqljs' as const,
+        location: dbPath,
+        autoSave: true,
+        entities,
+        synchronize: true,
+      }
+    : {
         type: 'mysql' as const,
-        host: process.env.DB_HOST || 'localhost',
+        host: process.env.DB_HOST || '127.0.0.1',
         port: Number(process.env.DB_PORT || 3306),
         username: process.env.DB_USER || 'campus',
         password: process.env.DB_PASSWORD || 'campus123',
@@ -52,13 +60,6 @@ const dbConfig =
         synchronize: true,
         retryAttempts: 40,
         retryDelay: 3000,
-      }
-    : {
-        type: 'sqljs' as const,
-        location: dbPath,
-        autoSave: true,
-        entities,
-        synchronize: true,
       };
 
 @Module({

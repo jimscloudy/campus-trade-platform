@@ -10,11 +10,21 @@
 - 站内私信
 - 成交评价
 
-## 方式一：本地直接跑（推荐，无需 Docker 镜像）
+## 方式一：本地直接跑（MySQL）
+
+先准备本地 MySQL（127.0.0.1:3306）：
+
+```sql
+CREATE DATABASE IF NOT EXISTS campus_trade DEFAULT CHARACTER SET utf8mb4;
+CREATE USER IF NOT EXISTS 'campus'@'%' IDENTIFIED BY 'campus123';
+GRANT ALL ON campus_trade.* TO 'campus'@'%';
+FLUSH PRIVILEGES;
+```
 
 ```bash
-# 后端（默认 SQLite，自动建库建表+演示数据）
+# 后端（读 server/.env，默认连 127.0.0.1 MySQL）
 cd server
+cp ../.env.example .env   # 按需改密码
 npm install
 npm run start:dev
 
@@ -26,6 +36,7 @@ npm run dev
 
 - 前端：http://localhost:5173  
 - API：http://localhost:3000/api  
+- 首次启动自动建表 + 演示数据
 
 ## 方式二：Docker 一键部署（MySQL）
 
