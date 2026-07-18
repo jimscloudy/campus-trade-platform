@@ -27,20 +27,32 @@ npm run dev
 - 前端：http://localhost:5173  
 - API：http://localhost:3000/api  
 
-## 方式二：Docker 一键部署
-
-需能拉取 `node:20-alpine`、`nginx` 镜像：
+## 方式二：Docker 一键部署（MySQL）
 
 ```bash
-docker-compose up -d --build
+cp .env.docker.example .env.docker
+# 编辑 .env.docker 填写 JWT / AI Key
+docker compose up -d --build
 ```
 
 | 服务 | 地址 |
 |------|------|
-| 前端 | http://localhost:8080 |
-| 后端 API | http://localhost:3000/api |
+| 前端 | http://服务器IP:8081 |
+| 后端 API | http://服务器IP:3001/api |
+| MySQL | 宿主机 `IP:3307` |
 
-默认使用 SQLite 卷持久化；若要用 MySQL，设置 `DB_TYPE=mysql` 并自行加 MySQL 服务。
+### MySQL 连接参数（Navicat / DBeaver）
+
+| 项 | 值 |
+|----|-----|
+| Host | 服务器公网 IP 或 `127.0.0.1`（本机） |
+| Port | `3307` |
+| User | `campus` |
+| Password | `campus123`（与 `.env.docker` 一致） |
+| Database | `campus_trade` |
+| Root 密码 | `root123456`（仅容器内 root） |
+
+> 生产请修改 `DB_PASSWORD` / `MYSQL_ROOT_PASSWORD`，并限制 3307 安全组仅自己 IP 可访问。
 
 ## 演示账号（首次启动自动种子）
 

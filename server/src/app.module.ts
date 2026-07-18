@@ -34,7 +34,8 @@ const entities = [
   Report,
   Block,
 ];
-const dbType = process.env.DB_TYPE || 'sqljs';
+// docker 默认 mysql；本地开发可不设 DB_TYPE，走 sqljs
+const dbType = (process.env.DB_TYPE || 'sqljs').toLowerCase();
 const dbPath = process.env.DB_PATH || join(process.cwd(), 'data', 'campus.db');
 
 const dbConfig =
@@ -46,10 +47,11 @@ const dbConfig =
         username: process.env.DB_USER || 'campus',
         password: process.env.DB_PASSWORD || 'campus123',
         database: process.env.DB_NAME || 'campus_trade',
+        charset: 'utf8mb4',
         entities,
         synchronize: true,
-        retryAttempts: 30,
-        retryDelay: 2000,
+        retryAttempts: 40,
+        retryDelay: 3000,
       }
     : {
         type: 'sqljs' as const,
