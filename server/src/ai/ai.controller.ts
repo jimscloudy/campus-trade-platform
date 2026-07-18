@@ -59,6 +59,12 @@ export class AiController {
   }
 
   @UseGuards(JwtAuthGuard, AdminGuard)
+  @Get('providers/:id/models')
+  listRemoteModels(@Param('id') id: string) {
+    return this.ai.listRemoteModels(id);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @Patch('providers/:id')
   updateProvider(
     @Param('id') id: string,

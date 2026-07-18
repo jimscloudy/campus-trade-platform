@@ -23,6 +23,7 @@ export class AiConfigService implements OnModuleInit {
 
   onModuleInit() {
     this.ensureLoaded();
+    this.migrateLegacyOpenAIModels();
   }
 
   private defaultProviders(): AiProvider[] {
@@ -43,10 +44,28 @@ export class AiConfigService implements OnModuleInit {
         name: 'OpenAI（中转）',
         baseUrl: (process.env.AI_BASE_URL_OPENAI || envBase).replace(/\/$/, ''),
         apiKey: envKey2,
-        model: process.env.AI_MODEL_OPENAI || 'gpt-5.4-mini',
-        modelStrong: process.env.AI_MODEL_OPENAI_STRONG || 'gpt-5.4',
+        model: process.env.AI_MODEL_OPENAI || 'gpt-5.5',
+        modelStrong: process.env.AI_MODEL_OPENAI_STRONG || 'gpt-5.6',
       },
     ];
+  }
+
+  /** 已有配置里 openai 若还是旧的 5.4-mini，升级默认推荐名（不覆盖用户已改成其它值的） */
+  migrateLegacyOpenAIModels() {
+    this.ensureLoaded();
+    let changed = false;
+    for (const p of this.config.providers) {
+      if (p.id !== 'openai') continue;
+      if (p.model === 'gpt-5.4-mini' || p.model === 'gpt-4o-mini') {
+        p.model = 'gpt-5.5';
+        changed = true;
+      }
+      if (p.modelStrong === 'gpt-5.4' || p.modelStrong === 'gpt-4o') {
+        p.modelStrong = 'gpt-5.6';
+        changed = true;
+      }
+    }
+    if (changed) this.save();
   }
 
   private ensureLoaded() {

@@ -105,6 +105,83 @@ export class AiService {
     return this.aiConfig.removeProvider(id);
   }
 
+  /** 从中转站 /v1/models 拉取该通道可用模型，供后台下拉选择 */
+  async listRemoteModels(id: string) {
+    const p = this.aiConfig.getById(id);
+    if (!p) throw new BadRequestException('通道不存在');
+    if (!p.apiKey?.trim()) {
+      return {
+        ok: false,
+        models: this.presetModels(p.id),
+        reason: '未配置 API Key，仅返回常用预设；填写 Key 后可点「拉取可用模型」',
+      };
+    }
+    const base = (p.baseUrl || '').replace(/\/$/, '');
+    try {
+      const res = await fetch(`${base}/models`, {
+        headers: { Authorization: `Bearer ${p.apiKey}` },
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        return {
+          ok: false,
+          models: this.presetModels(p.id),
+          reason: `拉取失败 HTTP ${res.status}: ${text.slice(0, 120)}`,
+        };
+      }
+      const data = JSON.parse(text);
+      const list = (data.data || data.models || [])
+        .map((m: any) => m.id || m.name || m.model)
+        .filter(Boolean)
+        .map(String);
+      // 优先展示 chat 相关，gpt/grok 排前面
+      const uniq = [...new Set(list as string[])].sort((a, b) => {
+        const score = (x: string) => {
+          let s = 0;
+          if (/gpt-5\.6/.test(x)) s += 100;
+          if (/gpt-5\.5/.test(x)) s += 90;
+          if (/gpt-5\.4/.test(x)) s += 70;
+          if (/grok/.test(x)) s += 80;
+          if (/mini/.test(x)) s += 5;
+          if (/image|audio|realtime|whisper|tts|embedding/.test(x)) s -= 50;
+          return s;
+        };
+        return score(b) - score(a) || a.localeCompare(b);
+      });
+      return {
+        ok: true,
+        models: uniq.length ? uniq : this.presetModels(p.id),
+        total: uniq.length,
+        reason: uniq.length ? null : '远端无模型列表，使用预设',
+      };
+    } catch (e: any) {
+      return {
+        ok: false,
+        models: this.presetModels(p.id),
+        reason: e?.message || String(e),
+      };
+    }
+  }
+
+  private presetModels(providerId: string) {
+    if (providerId === 'grok') {
+      return ['grok-4.5', 'grok-4', 'grok-3', 'grok-beta'];
+    }
+    return [
+      'gpt-5.6',
+      'gpt-5.5',
+      'gpt-5.4',
+      'gpt-5.4-mini',
+      'gpt-5.3-codex-spark',
+      'gpt-4o',
+      'gpt-4o-mini',
+      'gpt-4.1',
+      'gpt-4.1-mini',
+      'o4-mini',
+      'chatgpt-4o-latest',
+    ];
+  }
+
   async pingProvider(id?: string) {
     const p = id ? this.aiConfig.getById(id) : this.aiConfig.getActive();
     if (!p) return { ok: false, reason: '没有可用通道' };
@@ -148,12 +225,33 @@ export class AiService {
     const last = [...messages].reverse().find((m) => m.role === 'user');
     if (!last?.content?.trim()) throw new BadRequestException('请输入问题');
 
+    // 日期/时间类问题直接用服务器北京时间回答，避免模型瞎编
+    const timeAnswer = this.answerTimeQuestion(last.content);
+    if (timeAnswer) {
+      return { content: timeAnswer, provider: 'server-time', model: 'system-clock' };
+    }
+
+    const now = this.nowBeijing();
     const context = await this.buildBusinessContext(userId, last.content);
-    const system = `你是「校园易物」AI 助手。用中文简洁回答大学生问题。
-安全原则：当面验货、校内公共场合、勿提前转账、警惕刷单定金。
-可参考业务上下文（若有）：
+    const system = `你是「校园易物」AI 助手，服务中国大陆大学生。用中文简洁、准确回答。
+
+【当前权威时间（必须遵守，禁止编造）】
+- 时区：Asia/Shanghai（北京时间 UTC+8）
+- 现在：${now.full}
+- 星期：${now.weekday}
+- 日期：${now.date}
+问“今天星期几/几号/现在几点/北京时间”时，必须以上述时间为准，不要猜测。
+
+【安全原则】
+当面验货、校内公共场合交易、勿提前转账、警惕刷单/定金诈骗。
+
+【业务上下文】
 ${context}
-若用户要查自己的订单/收藏/通知，基于上下文回答，不要编造不存在的数据。`;
+
+【回答要求】
+1. 不要说“我无法获取时间/日期”，时间以上面为准
+2. 查订单/收藏/通知时只依据上下文，不编造
+3. 不确定就说明不确定，并引导用户去对应页面`;
 
     const { apiKey, baseUrl, model, modelStrong } = this.cfg;
     if (apiKey) {
@@ -498,8 +596,65 @@ ${context}
     };
   }
 
+  /** 服务器当前北京时间 */
+  private nowBeijing() {
+    const fmt = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date());
+    const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+    const date = `${get('year')}-${get('month')}-${get('day')}`;
+    const time = `${get('hour')}:${get('minute')}:${get('second')}`;
+    const weekday = get('weekday') || '';
+    return {
+      date,
+      time,
+      weekday,
+      full: `${date} ${weekday} ${time}（北京时间）`,
+    };
+  }
+
+  /** 处理日期/时间类问题，命中则直接返回，不经过大模型 */
+  private answerTimeQuestion(question: string): string | null {
+    const q = (question || '').trim();
+    if (!q) return null;
+    const now = this.nowBeijing();
+    const askWeek = /星期几|周几|礼拜几|今天周|今天是周|今天是星期/.test(q);
+    const askDate = /几号|日期|今天是几|哪一天|年月日/.test(q);
+    const askTime = /几点|现在时间|当前时间|北京时间|现在是几点|什么时候了/.test(q);
+    const askNow = /现在|当前|此刻/.test(q) && (askWeek || askDate || askTime || /时间|日期|星期/.test(q));
+    if (!askWeek && !askDate && !askTime && !askNow) {
+      // 极短问法：今天星期几 / 现在几点
+      if (/^(今天|现在|当前)/.test(q) && /星期|周|时间|几点|日期|几号/.test(q)) {
+        // fallthrough
+      } else if (!/^(今天|现在).{0,6}(星期|周|几点|时间|几号|日期)/.test(q)) {
+        return null;
+      }
+    }
+    if (askWeek && !askTime && !askDate) {
+      return `今天是${now.weekday}（${now.date}，北京时间）。`;
+    }
+    if (askTime && !askWeek && !askDate) {
+      return `现在是北京时间 ${now.time}（${now.date} ${now.weekday}）。`;
+    }
+    if (askDate && !askTime) {
+      return `今天是 ${now.date}，${now.weekday}（北京时间）。`;
+    }
+    return `现在是北京时间 ${now.full}。`;
+  }
+
   private async buildBusinessContext(userId: number | undefined, question: string) {
     const parts: string[] = [];
+    const now = this.nowBeijing();
+    parts.push(`服务器北京时间: ${now.full}`);
     const wantMine = /我的|订单|收藏|通知|未读/.test(question);
     if (userId && wantMine) {
       const [orders, favs, unread] = await Promise.all([
@@ -527,6 +682,8 @@ ${context}
   }
 
   private localChat(question: string, context: string) {
+    const timeAnswer = this.answerTimeQuestion(question);
+    if (timeAnswer) return timeAnswer;
     if (/订单|收藏|通知/.test(question) && context.includes('用户#')) {
       return `根据你的账号数据：\n${context}\n\n可到「订单 / 收藏 / 系统通知」查看详情。`;
     }
@@ -541,7 +698,8 @@ ${context}
     if (/议价|还价/.test(question)) {
       return '详情页点「议价」出价；话术可以先表达喜欢再给合理价格，并约定当面看货。需要我帮你生成一段议价话术也可以说「帮我写议价」。';
     }
-    return `我是校园易物助手，可以帮你：智能写文案、估价、议价话术、防骗检测、自然语言搜商品、推荐、树洞疏导。\n你问的是：「${question}」\n试试更具体一点，或打开 AI 页的快捷能力。`;
+    const now = this.nowBeijing();
+    return `我是校园易物助手（服务器时间 ${now.full}）。\n可以帮你：智能写文案、估价、议价话术、防骗检测、自然语言搜商品、推荐、树洞疏导。\n你问的是：「${question}」\n可以说具体一点，例如「怎么发布闲置」「帮我找东校区教材」。`;
   }
 
   private briefItem(i: Item) {

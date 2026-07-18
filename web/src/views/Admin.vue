@@ -294,28 +294,64 @@
       </div>
     </section>
 
-    <el-dialog v-model="dlgVisible" :title="dlgMode === 'create' ? '新增模型通道' : '编辑模型通道'" width="560px" destroy-on-close>
+    <el-dialog v-model="dlgVisible" :title="dlgMode === 'create' ? '新增模型通道' : '编辑模型通道'" width="620px" destroy-on-close>
       <el-form label-position="top" class="dlg-form">
         <el-form-item v-if="dlgMode === 'create'" label="通道 ID（英文）">
           <el-input v-model="form.id" placeholder="例如 openai2" />
         </el-form-item>
         <el-form-item label="显示名称">
-          <el-input v-model="form.name" placeholder="例如 Grok 4.5" />
+          <el-input v-model="form.name" placeholder="例如 OpenAI 中转" />
         </el-form-item>
         <el-form-item label="Base URL">
           <el-input v-model="form.baseUrl" placeholder="https://api.hualong.online/v1" />
         </el-form-item>
-        <div class="form-2">
-          <el-form-item label="默认模型">
-            <el-input v-model="form.model" placeholder="grok-4.5" />
-          </el-form-item>
-          <el-form-item label="强力模型">
-            <el-input v-model="form.modelStrong" placeholder="gpt-5.4" />
-          </el-form-item>
-        </div>
         <el-form-item :label="dlgMode === 'edit' ? 'API Key（留空不修改）' : 'API Key'">
           <el-input v-model="form.apiKey" type="password" show-password :placeholder="dlgMode === 'edit' ? '不改请留空' : 'sk-xxxx'" />
         </el-form-item>
+        <div class="model-pick-bar">
+          <span class="muted">模型列表</span>
+          <el-button size="small" type="primary" plain :loading="loadingModels" @click="fetchModels">
+            从中转站拉取可用模型
+          </el-button>
+        </div>
+        <p v-if="modelsHint" class="models-hint">{{ modelsHint }}</p>
+        <div class="form-2">
+          <el-form-item label="默认模型（快速）">
+            <el-select
+              v-model="form.model"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或输入模型名"
+              style="width: 100%"
+            >
+              <el-option v-for="m in modelOptions" :key="'f-' + m" :label="m" :value="m" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="强力模型">
+            <el-select
+              v-model="form.modelStrong"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或输入模型名"
+              style="width: 100%"
+            >
+              <el-option v-for="m in modelOptions" :key="'s-' + m" :label="m" :value="m" />
+            </el-select>
+          </el-form-item>
+        </div>
+        <div class="quick-models" v-if="quickPicks.length">
+          <span class="muted">快捷：</span>
+          <el-tag
+            v-for="m in quickPicks"
+            :key="m"
+            class="qtag"
+            effect="plain"
+            style="cursor: pointer"
+            @click="form.model = m"
+          >{{ m }}</el-tag>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="dlgVisible = false">取消</el-button>
@@ -369,6 +405,9 @@ const itemKeyword = ref('')
 const dlgVisible = ref(false)
 const dlgMode = ref('edit')
 const saving = ref(false)
+const loadingModels = ref(false)
+const modelOptions = ref([])
+const modelsHint = ref('')
 const form = reactive({
   id: '',
   name: '',
@@ -376,6 +415,12 @@ const form = reactive({
   model: '',
   modelStrong: '',
   apiKey: '',
+})
+
+const quickPicks = computed(() => {
+  const prefer = ['gpt-5.6', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'grok-4.5', 'gpt-4o', 'gpt-4o-mini']
+  const set = new Set(modelOptions.value || [])
+  return prefer.filter((m) => set.has(m) || /gpt-5|grok/.test(m)).slice(0, 8)
 })
 
 const kpis = computed(() => [
@@ -466,12 +511,14 @@ function openCreate() {
   dlgMode.value = 'create'
   Object.assign(form, {
     id: '',
-    name: '',
+    name: 'OpenAI（中转）',
     baseUrl: 'https://api.hualong.online/v1',
-    model: 'gpt-5.4-mini',
-    modelStrong: 'gpt-5.4',
+    model: 'gpt-5.5',
+    modelStrong: 'gpt-5.6',
     apiKey: '',
   })
+  modelOptions.value = ['gpt-5.6', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-mini', 'grok-4.5']
+  modelsHint.value = '可先填 Key，再点「拉取可用模型」获取账号下全部模型'
   dlgVisible.value = true
 }
 
@@ -485,7 +532,46 @@ function openEdit(p) {
     modelStrong: p.modelStrong,
     apiKey: '',
   })
+  modelOptions.value = [p.model, p.modelStrong, 'gpt-5.6', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'grok-4.5'].filter(
+    Boolean,
+  )
+  modelsHint.value = ''
   dlgVisible.value = true
+  // 自动尝试拉取
+  if (p.hasKey) fetchModels()
+}
+
+async function fetchModels() {
+  if (dlgMode.value === 'create' && !form.apiKey.trim()) {
+    ElMessage.warning('请先填写 API Key 再拉取')
+    return
+  }
+  loadingModels.value = true
+  modelsHint.value = '正在从中转站拉取…'
+  try {
+    // 编辑时用已保存的 key；若输入了新 key，先临时保存再拉更复杂，这里用通道 id 拉已存 key
+    // 新建通道：先要求用户保存；编辑通道：直接拉
+    if (dlgMode.value === 'create') {
+      // 临时用 POST 到一个仅内存的方式：先保存通道再拉
+      ElMessage.info('新建通道请先保存，再编辑并拉取模型列表')
+      modelsHint.value = '新建：先点保存，再编辑通道 → 拉取可用模型'
+      return
+    }
+    const res = await http.get(`/ai/providers/${form.id}/models`)
+    modelOptions.value = res.models || []
+    modelsHint.value = res.ok
+      ? `已拉取 ${res.total || modelOptions.value.length} 个模型，可下拉选择（支持手动输入）`
+      : res.reason || '拉取未完全成功，已显示可用列表/预设'
+    if (modelOptions.value.length && !modelOptions.value.includes(form.model)) {
+      // 不自动改用户当前 model，仅提示
+    }
+    ElMessage.success(res.ok ? '模型列表已更新' : '已回退到预设列表')
+  } catch (e) {
+    modelsHint.value = '拉取失败，可手动输入模型名'
+    ElMessage.error('拉取模型列表失败')
+  } finally {
+    loadingModels.value = false
+  }
 }
 
 async function saveForm() {
@@ -850,6 +936,26 @@ onMounted(load)
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+.model-pick-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.models-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.quick-models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+.qtag { margin: 0; }
 
 @media (max-width: 960px) {
   .admin-wrap { grid-template-columns: 1fr; }
