@@ -25,7 +25,8 @@
       <div class="side-foot">
         <div class="muted">登录身份</div>
         <div class="admin-user">{{ auth.user?.nickname || '管理员' }}</div>
-        <el-button size="small" @click="$router.push('/')">返回前台</el-button>
+        <el-button size="small" type="danger" plain @click="logoutAdmin">退出后台</el-button>
+        <el-button size="small" link @click="openFront">打开用户前台 ↗</el-button>
       </div>
     </aside>
 
@@ -326,13 +327,23 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../api/http'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
+const router = useRouter()
 const loading = ref(false)
 const tab = ref('dashboard')
+
+function openFront() {
+  window.open('/', '_blank')
+}
+function logoutAdmin() {
+  auth.logout()
+  router.replace('/login?redirect=/admin')
+}
 const menus = [
   { key: 'dashboard', label: '数据总览', icon: '📊', desc: '平台核心指标与待办' },
   { key: 'models', label: '大模型配置', icon: '🤖', desc: '通道、Key、连通测试' },
@@ -569,15 +580,17 @@ onMounted(load)
 
 <style scoped>
 .admin-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 230px 1fr;
   gap: 0;
-  min-height: calc(100vh - 100px);
-  margin: -8px -8px 0;
-  background: #f3f6f4;
-  border-radius: 16px;
+  min-height: 100vh;
+  height: 100vh;
+  margin: 0;
+  background: #eef3f0;
   overflow: hidden;
-  border: 1px solid var(--border);
 }
 
 .admin-side {
@@ -653,9 +666,10 @@ onMounted(load)
 .admin-user { font-weight: 700; margin: 4px 0 10px; }
 
 .admin-main {
-  padding: 18px 20px 28px;
+  padding: 20px 22px 32px;
   min-width: 0;
   overflow: auto;
+  height: 100vh;
 }
 
 .admin-top {

@@ -14,7 +14,7 @@
           <div class="quick">
             <el-button @click="$router.push('/favorites')">我的收藏</el-button>
             <el-button @click="$router.push('/notifications')">系统通知</el-button>
-            <el-button v-if="auth.user.role === 'admin'" type="primary" @click="$router.push('/admin')">管理后台</el-button>
+            <el-button v-if="auth.user.role === 'admin'" type="primary" @click="goAdmin">管理后台</el-button>
           </div>
           <p class="bio">{{ auth.user.bio || '这个人很懒，还没有简介' }}</p>
         </div>
